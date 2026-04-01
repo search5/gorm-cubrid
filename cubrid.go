@@ -17,6 +17,7 @@ import (
 
 	_ "github.com/search5/cubrid-go"
 	"gorm.io/gorm"
+	"gorm.io/gorm/callbacks"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/migrator"
 	"gorm.io/gorm/schema"
@@ -58,7 +59,7 @@ func (d Dialector) Name() string {
 	return "cubrid"
 }
 
-// Initialize sets up the database connection and registers clause builders.
+// Initialize sets up the database connection and registers clause builders and callbacks.
 func (d Dialector) Initialize(db *gorm.DB) error {
 	if d.DriverName == "" {
 		d.DriverName = "cubrid"
@@ -76,6 +77,13 @@ func (d Dialector) Initialize(db *gorm.DB) error {
 		}
 		db.ConnPool = conn
 	}
+
+	// Register default GORM callbacks (create, query, update, delete, row, raw).
+	callbacks.RegisterDefaultCallbacks(db, &callbacks.Config{
+		CreateClauses: []string{"INSERT", "VALUES", "ON CONFLICT"},
+		UpdateClauses: []string{"UPDATE", "SET", "WHERE"},
+		DeleteClauses: []string{"DELETE", "FROM", "WHERE"},
+	})
 
 	// Register clause builders for CUBRID-specific SQL generation.
 	for k, v := range d.ClauseBuilders() {
