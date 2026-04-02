@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/search5/cubrid-go"
+	cubriddriver "github.com/search5/cubrid-go"
 	"gorm.io/gorm"
 	"gorm.io/gorm/callbacks"
 	"gorm.io/gorm/clause"
@@ -37,6 +37,15 @@ type Config struct {
 
 	// DefaultStringSize is the default size for VARCHAR columns. Defaults to 255.
 	DefaultStringSize uint
+
+	// Internal: pool and HA configurations set via OpenPool/OpenHA.
+	poolConfig *cubriddriver.PoolConfig
+	haConfig   *cubriddriver.HAConfig
+	haReadOnly bool
+
+	// pool and haCluster hold runtime references for cleanup.
+	pool      *cubriddriver.Pool
+	haCluster *cubriddriver.HACluster
 }
 
 // Dialector implements gorm.Dialector for CUBRID.
@@ -54,6 +63,19 @@ func New(config Config) gorm.Dialector {
 	return &Dialector{Config: &config}
 }
 
+// OpenPool creates a CUBRID dialector backed by a CUBRID-aware connection pool.
+// The pool provides health validation, broker failover handling, and metrics.
+func OpenPool(config cubriddriver.PoolConfig) gorm.Dialector {
+	return &Dialector{Config: &Config{poolConfig: &config}}
+}
+
+// OpenHA creates a CUBRID dialector backed by an HA cluster.
+// The cluster provides automatic failover and optional read/write splitting.
+// When readOnly is true, queries are routed to standby brokers.
+func OpenHA(config cubriddriver.HAConfig, readOnly bool) gorm.Dialector {
+	return &Dialector{Config: &Config{haConfig: &config, haReadOnly: readOnly}}
+}
+
 // Name returns the dialect name.
 func (d Dialector) Name() string {
 	return "cubrid"
@@ -68,9 +90,27 @@ func (d Dialector) Initialize(db *gorm.DB) error {
 		d.DefaultStringSize = 255
 	}
 
-	if d.Conn != nil {
+	switch {
+	case d.poolConfig != nil:
+		pool, err := cubriddriver.NewPool(*d.poolConfig)
+		if err != nil {
+			return fmt.Errorf("cubrid: pool init: %w", err)
+		}
+		d.pool = pool
+		db.ConnPool = pool.DB()
+
+	case d.haConfig != nil:
+		cluster, err := cubriddriver.NewHACluster(*d.haConfig)
+		if err != nil {
+			return fmt.Errorf("cubrid: HA init: %w", err)
+		}
+		d.haCluster = cluster
+		db.ConnPool = cluster.DB(d.haReadOnly)
+
+	case d.Conn != nil:
 		db.ConnPool = d.Conn
-	} else {
+
+	default:
 		conn, err := sql.Open(d.DriverName, d.DSN)
 		if err != nil {
 			return err
