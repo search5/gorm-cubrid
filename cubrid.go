@@ -23,6 +23,9 @@ import (
 	"gorm.io/gorm/schema"
 )
 
+// Version is the current version of the gorm-cubrid dialector.
+const Version = "0.1.0"
+
 // Config holds CUBRID-specific dialector configuration.
 type Config struct {
 	// DSN is the CUBRID connection string.
