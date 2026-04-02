@@ -1,9 +1,9 @@
 module github.com/search5/gorm-cubrid
 
-go 1.26.1
+go 1.24.0
 
 require (
-	github.com/search5/cubrid-go v0.1.0
+	github.com/search5/cubrid-go v0.1.1
 	gorm.io/gorm v1.31.1
 )
 
